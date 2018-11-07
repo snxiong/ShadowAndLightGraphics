@@ -2,7 +2,9 @@
 
 layout (location=0) in vec3 vertPos;
 layout (location=1) in vec3 vertNormal;
+layout (location=2) in vec2 texCoord;	// added
 
+out vec2 tc;	// added
 out vec3 vNormal, vLightDir, vVertPos, vHalfVec; 
 out vec4 shadow_coord;
 
@@ -24,6 +26,8 @@ uniform mat4 normalMat;
 uniform mat4 shadowMVP;
 layout (binding=0) uniform sampler2DShadow shadowTex;
 
+layout (binding=1) uniform sampler2D texSamp; // added
+
 void main(void)
 {	//output the vertex position to the rasterizer for interpolation
 	vVertPos = (mv_matrix * vec4(vertPos,1.0)).xyz;
@@ -40,4 +44,6 @@ void main(void)
 	shadow_coord = shadowMVP * vec4(vertPos,1.0);
 	
 	gl_Position = proj_matrix * mv_matrix * vec4(vertPos,1.0);
+	
+	tc = texCoord; // added
 }
