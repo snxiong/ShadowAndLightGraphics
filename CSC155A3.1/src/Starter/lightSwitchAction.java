@@ -4,15 +4,15 @@ import java.awt.event.ActionEvent;
 
 import javax.swing.AbstractAction;
 
-public class spaceAction  extends AbstractAction{
+public class lightSwitchAction extends AbstractAction{
 
-	private int mode = 1;
-
+	private static int mode = 1;
+	
 	
 	@Override
-	public void actionPerformed(ActionEvent e) {
+	public void actionPerformed(ActionEvent arg0) {
 		// TODO Auto-generated method stub
-		//System.out.println("spaceswitch activated");
+	//	System.out.println("lightswitch activated mode = " + mode);
 		if(mode == 0)
 		{
 			mode = 1;
@@ -23,7 +23,7 @@ public class spaceAction  extends AbstractAction{
 		}
 	}
 	
-	public int axesMode()
+	public int lightMode()
 	{
 		return mode;
 	}

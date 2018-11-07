@@ -5,13 +5,19 @@ import graphicslib3D.light.*;
 import graphicslib3D.GLSLUtils.*;
 import graphicslib3D.shape.*;
 
+import java.io.File;
 import java.nio.*;
 import javax.swing.*;
 
+import static com.jogamp.opengl.GL.GL_CCW;
+import static com.jogamp.opengl.GL.GL_DEPTH_TEST;
+import static com.jogamp.opengl.GL.GL_LINES;
 import static com.jogamp.opengl.GL4.*;
 import com.jogamp.opengl.*;
 import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.util.*;
+import com.jogamp.opengl.util.texture.Texture;
+import com.jogamp.opengl.util.texture.TextureIO;
 
 import Starter.backwardAction;
 import Starter.downArrowAction;
@@ -20,6 +26,7 @@ import Starter.forwardAction;
 import Starter.leftAction;
 import Starter.rightAction;
 import Starter.upwardAction;
+import Starter.Sphere;
 import Starter.spaceAction;
 import Starter.leftArrowAction;
 import Starter.rightArrowAction;
@@ -35,7 +42,7 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 	private String[] vBlinn1ShaderSource, vBlinn2ShaderSource, fBlinn2ShaderSource;
 	private int rendering_program1, rendering_program2;
 	private int vao[] = new int[1];
-	private int vbo[] = new int[8];
+	private int vbo[] = new int[10];
 	private int mv_location, proj_location, vertexLoc, n_location;
 	private float aspect;
 	private GLSLUtils util = new GLSLUtils();
@@ -43,7 +50,7 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 	// location of torus and camera
 	private Point3D torusLoc = new Point3D(1.6, 0.0, -0.3);
 	private Point3D pyrLoc = new Point3D(-1.0, 0.1, 0.3);
-	
+	private Point3D sphereLoc = new Point3D(-3.8f, 2.2f, 1.1f);
 	
 	
 	
@@ -57,11 +64,21 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 	//private Point3D lightLoc = new Point3D(-3.8f, 2.2f, 1.1f);
 	private Light lightSource = new Light();
 	
+	private Sphere mySphere = new Sphere(24);
+	
 	
 	
 	// light stuff
 	private float [] globalAmbient = new float[] { 0.7f, 0.7f, 0.7f, 1.0f };
 	private PositionalLight currentLight = new PositionalLight();
+	private PositionalLight onCurrentLight = currentLight;
+	private PositionalLight offCurrentLight = new PositionalLight();
+	
+	float[] amb4 = new float[] {0.0f, 0.0f, 0.0f, 0.0f};
+	float[] dif4 = new float[] {0.0f, 0.0f, 0.0f, 0.0f};
+	float[] spec4 = new float[] {0.0f, 0.0f, 0.0f, 0.0f};
+	
+	
 	
 	// shadow stuff
 	private int scSizeX, scSizeY;
@@ -82,8 +99,14 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 	private static double panDegreeUpDown = 0.0;
 	private static double panDegreeRightLeft = 0.0;
 	
+	
+	
 	private MatrixStack mvStack = new MatrixStack(20);
 	spaceAction spaceListener = new spaceAction();
+	lightSwitchAction lightSwitchListener = new lightSwitchAction();
+	
+	private Point3D diamondLoc = new Point3D(0.0, 0.0, 0.0);
+	private Point3D axisLoc = new Point3D(0.0, 0.0, 0.0);
 	
 	public Starter()
 	{	setTitle("Chapter8 - program 1");
@@ -275,12 +298,18 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 		this.requestFocus();
 		// end of SPACE key press
 		
+		// setting up 't' key press
+		KeyStroke tKey = KeyStroke.getKeyStroke('t');
+		imap.put(tKey, "lightSwitch");
 		
+		lightSwitchAction lightSwitchListener = new lightSwitchAction();
+		ActionMap lightSWKey = contentPane.getActionMap();
+		lightSWKey.put("lightSwitch", lightSwitchListener);
+		this.requestFocus();
+		// end of 't' key press
+	
 		
-			
-		
-		
-		FPSAnimator animator = new FPSAnimator(myCanvas, 30);
+		FPSAnimator animator = new FPSAnimator(myCanvas, 50);
 		animator.start();
 	}
 
@@ -304,8 +333,31 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 		gl.glEnable(GL_POLYGON_OFFSET_FILL);	// for reducing
 		gl.glPolygonOffset(2.0f, 4.0f);			//  shadow artifacts
 		
+		offCurrentLight.setAmbient(amb4);
+		offCurrentLight.setDiffuse(dif4);
+		offCurrentLight.setSpecular(spec4);
+		offCurrentLight.setConstantAtt(0.0f);
+		offCurrentLight.setLinearAtt(0.0f);
+		offCurrentLight.setQuadraticAtt(0.0f);
+		
 		
 		/// CREATING AXIS X Y AND Z
+		//System.out.println("lightmode = " + lightSwitchListener.lightMode());
+
+		
+		if(lightSwitchListener.lightMode() == 0)// turn the lights off
+		{
+			//globalAmbient = new float[] { 0.0f, 0.0f, 0.0f, 0.0f };
+			offCurrentLight.setPosition(currentLight.getPosition());
+			currentLight = offCurrentLight;
+			//System.out.println("Point#1");
+		}
+		else	// else turn the lights back on
+		{
+			//globalAmbient = new float[] { 0.7f, 0.7f, 0.7f, 1.0f };
+			currentLight = onCurrentLight;
+			//System.out.println("Point#2");
+		}
 		
 		passOne();
 		
@@ -391,6 +443,34 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 		gl.glDrawArrays(GL_TRIANGLES, 0, pyramid.getNumVertices());
 		
 		
+		//////////////////////////////////////////
+		//////	 DRAW SPHERE LIGHT SOURCE	//////
+		//////////////////////////////////////////
+		
+		m_matrix.setToIdentity();
+		m_matrix.translate(sphereLoc.getX(), sphereLoc.getY(), sphereLoc.getZ());
+		
+		shadowMVP1.setToIdentity();
+		shadowMVP1.concatenate(lightP_matrix);
+		shadowMVP1.concatenate(lightV_matrix);
+		shadowMVP1.concatenate(m_matrix);
+		
+		gl.glUniformMatrix4fv(shadow_location, 1, false, shadowMVP1.getFloatValues(), 0);
+		
+		//set up vertices buffer for light source sphere
+		gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[7]);
+		gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, 0, 0);
+		gl.glEnableVertexAttribArray(0);
+		
+		gl.glEnable(GL_CULL_FACE);
+		gl.glFrontFace(GL_CCW);
+		gl.glEnable(GL_DEPTH_TEST);
+		gl.glDepthFunc(GL_LEQUAL);
+		
+		gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getIndices().length);
+		
+		
+		
 				
 	}
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -425,8 +505,6 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 		v_matrix.rotateX(panDegreeUpDown);
 		v_matrix.rotateY(panDegreeRightLeft);
 		v_matrix.translate(-Cam.getCamX(),-Cam.getCamY(),-Cam.getCamZ());
-	
-		
 		
 		installLights(rendering_program2, v_matrix);
 		
@@ -514,8 +592,177 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 
 		gl.glDrawArrays(GL_TRIANGLES, 0, pyramid.getNumVertices());
 		
+		/////////////////////////////////////////////////
+		////////	DRAW A SPHERE AT LIGHT SOURCE	/////
+		/////////////////////////////////////////////////
+		
+		thisMaterial = new Material();
+		float[] amb3 = new float[] {1.0f, 1.0f, 0.6f, 1.0f};
+		float[] dif3 = new float[] {1.0f, 1.0f, 0.6f, 1.0f};
+		float[] spec3 = new float[] {1.0f, 1.0f, 0.6f, 1.0f};
+		thisMaterial.setAmbient(amb3);
+		thisMaterial.setDiffuse(dif3);
+		thisMaterial.setSpecular(spec3);
+		thisMaterial.setShininess(10.0f);
+		installLights(rendering_program2, v_matrix);
+		
+		m_matrix.setToIdentity();
+		
+		sphereLoc.setX(lightSource.getLightX());
+		sphereLoc.setY(lightSource.getLightY());
+		sphereLoc.setZ(lightSource.getLightZ());
+		m_matrix.scale(0.3, 0.3, 0.3);
+		
+		m_matrix.translate(sphereLoc.getX(), sphereLoc.getY(), sphereLoc.getZ());
+		
+		// building the MODEL-VIEW MATRIX for the sphere that will be placed at the light soruce
+		mv_matrix.setToIdentity();
+		mv_matrix.concatenate(v_matrix);
+		mv_matrix.concatenate(m_matrix);
+		gl.glUniformMatrix4fv(shadow_location, 1, false, shadowMVP2.getFloatValues(), 0);
+
+		//  put the MV and PROJ matrices into the corresponding uniforms
+		gl.glUniformMatrix4fv(mv_location, 1, false, mv_matrix.getFloatValues(), 0);
+		gl.glUniformMatrix4fv(proj_location, 1, false, proj_matrix.getFloatValues(), 0);
+		gl.glUniformMatrix4fv(n_location, 1, false, (mv_matrix.inverse()).transpose().getFloatValues(), 0);
+		
+		// set up sphere vertices buffer
+		gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[7]);
+		gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, 0, 0);
+		gl.glEnableVertexAttribArray(0);
+
+		// set up sphere normals buffer
+		gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[8]);
+		gl.glVertexAttribPointer(1, 3, GL_FLOAT, false, 0, 0);
+		gl.glEnableVertexAttribArray(1);
+
+		gl.glEnable(GL_CULL_FACE);
+		gl.glFrontFace(GL_CCW);
+		gl.glEnable(GL_DEPTH_TEST);
+		gl.glDepthFunc(GL_LEQUAL);
+
+		gl.glDrawArrays(GL_TRIANGLES, 0, mySphere.getIndices().length);
 		
 		
+		/////////////////////////////////////////////////
+		////////		DRAW AXIS 		/////////////////
+		/////////////////////////////////////////////////
+		
+		if(spaceListener.axesMode() == 1)
+		{
+			thisMaterial = new Material();
+			float[] amb = new float[] {1.0f, 0.0f, 0.0f, 1.0f};
+			float[] dif = new float[] {1.0f, 0.0f, 0.0f, 1.0f};
+			float[] spec = new float[] {1.0f, 0.0f, 0.0f, 1.0f};
+			thisMaterial.setAmbient(amb);
+			thisMaterial.setDiffuse(dif);
+			thisMaterial.setSpecular(spec);
+			thisMaterial.setShininess(15.0f);
+			installLights(rendering_program2, v_matrix);
+			
+			// X AXIS
+			m_matrix.setToIdentity();
+			m_matrix.translate(axisLoc.getX(), axisLoc.getY(), axisLoc.getZ());
+			
+			//build the MODEL-VIEW matrix
+			mv_matrix.setToIdentity();
+			mv_matrix.concatenate(v_matrix);
+			mv_matrix.concatenate(m_matrix);
+			
+			
+			
+			//  put the MV and PROJ matrices into the corresponding uniforms
+			gl.glUniformMatrix4fv(mv_location, 1, false, mv_matrix.getFloatValues(), 0);
+			gl.glUniformMatrix4fv(proj_location, 1, false, proj_matrix.getFloatValues(), 0);
+			
+			// set up vertices buffer
+			gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[4]);
+			gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, 0, 0);
+			gl.glEnableVertexAttribArray(0);
+			
+			gl.glEnable(GL_DEPTH_TEST);
+			gl.glFrontFace(GL_CCW);
+			//  END OF TEXTURE FUNCTINOS
+
+			gl.glDrawArrays(GL_LINES, 0, 2);
+			
+			// Y AXIES
+			
+			//thisMaterial = new Material();
+			float[] amb1 = new float[] {0.0f, 1.0f, 0.0f, 1.0f};
+			float[] dif1 = new float[] {0.0f, 1.0f, 0.0f, 1.0f};
+			float[] spec1 = new float[] {0.0f, 1.0f, 0.0f, 1.0f};
+			thisMaterial.setAmbient(amb1);
+			thisMaterial.setDiffuse(dif1);
+			thisMaterial.setSpecular(spec1);
+			thisMaterial.setShininess(15.0f);
+			installLights(rendering_program2, v_matrix);
+			
+			m_matrix.setToIdentity();
+			m_matrix.translate(axisLoc.getX(), axisLoc.getY(), axisLoc.getZ());
+			
+			//build the MODEL-VIEW matrix
+			mv_matrix.setToIdentity();
+			mv_matrix.concatenate(v_matrix);
+			mv_matrix.concatenate(m_matrix);
+			
+			
+			
+			//  put the MV and PROJ matrices into the corresponding uniforms
+			gl.glUniformMatrix4fv(mv_location, 1, false, mv_matrix.getFloatValues(), 0);
+			gl.glUniformMatrix4fv(proj_location, 1, false, proj_matrix.getFloatValues(), 0);
+			
+			// set up vertices buffer
+			gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[5]);
+			gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, 0, 0);
+			gl.glEnableVertexAttribArray(0);
+			
+			gl.glEnable(GL_DEPTH_TEST);
+			gl.glFrontFace(GL_CCW);
+			//  END OF TEXTURE FUNCTINOS
+
+			gl.glDrawArrays(GL_LINES, 0, 2);
+			
+			// Z AXIS
+			
+			//thisMaterial = new Material();
+			float[] amb2 = new float[] {0.0f, 0.0f, 1.0f, 1.0f};
+			float[] dif2 = new float[] {0.0f, 0.0f, 1.0f, 1.0f};
+			float[] spec2 = new float[] {0.0f, 0.0f, 1.0f, 1.0f};
+			thisMaterial.setAmbient(amb2);
+			thisMaterial.setDiffuse(dif2);
+			thisMaterial.setSpecular(spec2);
+			thisMaterial.setShininess(15.0f);
+			installLights(rendering_program2, v_matrix);
+			
+			m_matrix.setToIdentity();
+			m_matrix.translate(axisLoc.getX(), axisLoc.getY(), axisLoc.getZ());
+			
+			//build the MODEL-VIEW matrix
+			mv_matrix.setToIdentity();
+			mv_matrix.concatenate(v_matrix);
+			mv_matrix.concatenate(m_matrix);
+			
+			
+			
+			//  put the MV and PROJ matrices into the corresponding uniforms
+			gl.glUniformMatrix4fv(mv_location, 1, false, mv_matrix.getFloatValues(), 0);
+			gl.glUniformMatrix4fv(proj_location, 1, false, proj_matrix.getFloatValues(), 0);
+			
+			// set up vertices buffer
+			gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[6]);
+			gl.glVertexAttribPointer(0, 3, GL_FLOAT, false, 0, 0);
+			gl.glEnableVertexAttribArray(0);
+			
+			gl.glEnable(GL_DEPTH_TEST);
+			gl.glFrontFace(GL_CCW);
+			//  END OF TEXTURE FUNCTINOS
+
+			gl.glDrawArrays(GL_LINES, 0, 2);
+			
+			
+		}
+	
 
 	}
 
@@ -534,6 +781,7 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 		// may reduce shadow border artifacts
 		gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	
 	}
 	
 	public void setupShadowBuffers()
@@ -601,32 +849,49 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 			torus_nvalues[i*3+2] = (float) (torus_vertices[torus_indices[i]]).getNormalZ();
 		}
 		
+		//////////////////////////////////
+		////	SPHERE LIGHT SOURCE //////	
+		//////////////////////////////////
+		
+		
+		Vertex3D[] vertices = mySphere.getVertices();
+		int[] indices = mySphere.getIndices();
+		
+		float[] pvalues = new float[indices.length*3];
+		float[] nvalues = new float[indices.length*3];
+		
+		for (int i=0; i<indices.length; i++)
+		{	pvalues[i*3] = (float) (vertices[indices[i]]).getX();
+			pvalues[i*3+1] = (float) (vertices[indices[i]]).getY();
+			pvalues[i*3+2] = (float) (vertices[indices[i]]).getZ();
+			nvalues[i*3] = (float) (vertices[indices[i]]).getNormalX();
+			nvalues[i*3+1]= (float)(vertices[indices[i]]).getNormalY();
+			nvalues[i*3+2]=(float) (vertices[indices[i]]).getNormalZ();
+		}
+		
+		
 		float[] lineZ_coordinates =
 		{
-			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 30.0f
+			0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 20.0f
 		};
 		
 		float[] lineX_coordinates = 
 		{
-			0.0f, 0.0f, 0.0f, 30.0f, 0.0f, 0.0f
+			0.0f, 0.0f, 0.0f, 20.0f, 0.0f, 0.0f
 		};
 		
 		float[] lineY_coordinates =
 		{
-			0.0f, 0.0f, 0.0f, 0.0f, 30.0f, 0.0f		
+			0.0f, 0.0f, 0.0f, 0.0f, 20.0f, 0.0f		
 		};
 		
-		float[] line_texture =
-		{
-			0.0f, 0.0f, 1.0f, 0.0f		
-		};
 		
 		numTorusVertices = torus_indices.length;
 
 		gl.glGenVertexArrays(vao.length, vao, 0);
 		gl.glBindVertexArray(vao[0]);
 
-		gl.glGenBuffers(4, vbo, 0);
+		gl.glGenBuffers(vbo.length, vbo, 0);
 
 		//  put the Torus vertices into the first buffer,
 		gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
@@ -661,9 +926,13 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 		gl.glBufferData(GL_ARRAY_BUFFER, zBuf.limit()*4, zBuf, GL_STATIC_DRAW);
 		
 		gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[7]);
-		FloatBuffer lineTextureBuf = Buffers.newDirectFloatBuffer(line_texture);
-		gl.glBufferData(GL_ARRAY_BUFFER, lineTextureBuf.limit()*4, lineTextureBuf, GL_STATIC_DRAW);
+		FloatBuffer sunPBuf = Buffers.newDirectFloatBuffer(pvalues);
+		gl.glBufferData(GL_ARRAY_BUFFER, sunPBuf.limit()*4, sunPBuf, GL_STATIC_DRAW);
 		
+		gl.glBindBuffer(GL_ARRAY_BUFFER, vbo[8]);
+		FloatBuffer sunNBuf = Buffers.newDirectFloatBuffer(nvalues);
+		gl.glBufferData(GL_ARRAY_BUFFER, sunNBuf.limit()*4, sunNBuf, GL_STATIC_DRAW);
+
 	}
 	
 	private void installLights(int rendering_program, Matrix3D v_matrix)
@@ -791,6 +1060,14 @@ public class Starter extends JFrame implements GLEventListener, KeyListener
 		return(look);
 	}
 
+	// function to read in the texture jpg file
+	public Texture loadTexture(String textureFileName)
+	{	Texture tex = null;
+		try { tex = TextureIO.newTexture(new File(textureFileName), false); }
+		catch (Exception e) { e.printStackTrace(); }
+		return tex;
+	}
+	
 	@Override
 	public void keyPressed(KeyEvent e) {
 		// TODO Auto-generated method stub
