@@ -7,7 +7,7 @@ import graphicslib3D.Vector3D;
 
 public class Light {
 	
-	private static Point3D light_Loc = new Point3D(-3.8f, 2.2f, 1.1f);
+	private static Point3D light_Loc = new Point3D(-6.8f, 2.2f, 1.1f);
 	
 	private Vector3D X = new Vector3D(1, 0, 0);
 	private Vector3D Y = new Vector3D(0, 1, 0);
